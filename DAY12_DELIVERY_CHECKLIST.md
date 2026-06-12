@@ -1,8 +1,8 @@
 #  Delivery Checklist — Day 12 Lab Submission
 
-> **Student Name:** _________________________  
-> **Student ID:** _________________________  
-> **Date:** _________________________
+> **Student Name:** Nguyễn Tuấn Dũng  
+> **Student ID:** 2A202600848  
+> **Date:** 12/6/2026
 
 ---
 
@@ -38,8 +38,8 @@ Create a file `MISSION_ANSWERS.md` with your answers to all exercises:
 ...
 
 ### Exercise 2.3: Image size comparison
-- Develop: [X] MB
-- Production: [Y] MB
+- Develop: [1660] MB
+- Production: [236] MB
 - Difference: [Z]%
 
 ## Part 3: Cloud Deployment

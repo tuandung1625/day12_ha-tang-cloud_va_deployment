@@ -38,6 +38,10 @@ def run_checks():
                          os.path.exists(os.path.join(base, ".env.example"))))
     results.append(check("requirements.txt exists",
                          os.path.exists(os.path.join(base, "requirements.txt"))))
+    results.append(check("Agent tool registry exists",
+                         os.path.exists(os.path.join(base, "app", "tools.py"))))
+    results.append(check("Agent loop exists",
+                         os.path.exists(os.path.join(base, "app", "agent.py"))))
     results.append(check("railway.toml or render.yaml exists",
                          os.path.exists(os.path.join(base, "railway.toml")) or
                          os.path.exists(os.path.join(base, "render.yaml"))))
@@ -83,6 +87,8 @@ def run_checks():
                              '"/health"' in content or "'/health'" in content))
         results.append(check("/ready endpoint defined",
                              '"/ready"' in content or "'/ready'" in content))
+        results.append(check("/tools endpoint defined",
+                             '"/tools"' in content or "'/tools'" in content))
         results.append(check("Authentication implemented",
                              "api_key" in content.lower() or "verify_token" in content))
         results.append(check("Rate limiting implemented",

@@ -29,10 +29,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import uvicorn
 
+from app.agent import research_agent
 from app.config import settings
-
-# Mock LLM (thay bằng OpenAI/Anthropic khi có API key)
-from utils.mock_llm import ask as llm_ask
+from app.tools import TOOL_FUNCTIONS
 
 # ─────────────────────────────────────────────────────────
 # Logging — JSON structured
@@ -80,7 +79,11 @@ def check_and_record_cost(input_tokens: int, output_tokens: int):
         _cost_reset_day = today
     if _daily_cost >= settings.daily_budget_usd:
         raise HTTPException(503, "Daily budget exhausted. Try tomorrow.")
-    cost = (input_tokens / 1000) * 0.00015 + (output_tokens / 1000) * 0.0006
+    cost = (
+        input_tokens / 1_000_000
+    ) * settings.input_cost_per_million_usd + (
+        output_tokens / 1_000_000
+    ) * settings.output_cost_per_million_usd
     _daily_cost += cost
 
 # ─────────────────────────────────────────────────────────
@@ -145,7 +148,8 @@ async def request_middleware(request: Request, call_next):
         # Security headers
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers.pop("server", None)
+        if "server" in response.headers:
+            del response.headers["server"]
         duration = round((time.time() - start) * 1000, 1)
         logger.info(json.dumps({
             "event": "request",
@@ -170,6 +174,7 @@ class AskResponse(BaseModel):
     question: str
     answer: str
     model: str
+    tools_used: list[dict] = Field(default_factory=list)
     timestamp: str
 
 # ─────────────────────────────────────────────────────────
@@ -186,6 +191,7 @@ def root():
             "ask": "POST /ask (requires X-API-Key)",
             "health": "GET /health",
             "ready": "GET /ready",
+            "tools": "GET /tools",
         },
     }
 
@@ -214,24 +220,47 @@ async def ask_agent(
         "client": str(request.client.host) if request.client else "unknown",
     }))
 
-    answer = llm_ask(body.question)
+    try:
+        result = research_agent.run(body.question)
+    except Exception as exc:
+        logger.exception("Agent provider call failed")
+        raise HTTPException(502, "Agent provider is temporarily unavailable") from exc
 
-    output_tokens = len(answer.split()) * 2
+    output_tokens = len(result.answer.split()) * 2
     check_and_record_cost(0, output_tokens)
 
     return AskResponse(
         question=body.question,
-        answer=answer,
-        model=settings.llm_model,
+        answer=result.answer,
+        model=result.model,
+        tools_used=result.tools_used,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
+
+
+@app.get("/tools", tags=["Info"])
+def tools():
+    """List tools the model may call. Secrets and implementations are not exposed."""
+    return {
+        "tools": sorted(TOOL_FUNCTIONS),
+        "live_tools": {
+            "web_search": bool(os.getenv("TAVILY_API_KEY")),
+            "read_url": bool(os.getenv("FIRECRAWL_API_KEY")),
+            "search_papers": True,
+            "market_price": True,
+            "weather": True,
+        },
+    }
 
 
 @app.get("/health", tags=["Operations"])
 def health():
     """Liveness probe. Platform restarts container if this fails."""
     status = "ok"
-    checks = {"llm": "mock" if not settings.openai_api_key else "openai"}
+    checks = {
+        "llm": "mock" if not settings.gemini_api_key else "gemini",
+        "tools": len(TOOL_FUNCTIONS),
+    }
     return {
         "status": status,
         "version": settings.app_version,

@@ -1,100 +1,309 @@
-# Lab 12 — Complete Production Agent
+# Lab 12 - Production Research Agent
 
-Kết hợp TẤT CẢ những gì đã học trong 1 project hoàn chỉnh.
+Ung dung nay giu nguyen bo khung production cua folder 06 va bo sung y tuong
+Research Agent tu `sample/starter_v0`:
 
-## Checklist Deliverable
+- Model co the tu chon tool.
+- Tool result duoc dua lai model de tao cau tra loi cuoi.
+- Agent stateless: moi request la mot run doc lap.
+- Tool chi doc du lieu, khong gui/publish va khong ghi file.
+- Auth, rate limit, cost guard, health check va deployment van theo folder 06.
 
-- [x] Dockerfile (multi-stage, < 500 MB)
-- [x] docker-compose.yml (agent + redis)
-- [x] .dockerignore
-- [x] Health check endpoint (`GET /health`)
-- [x] Readiness endpoint (`GET /ready`)
-- [x] API Key authentication
-- [x] Rate limiting
-- [x] Cost guard
-- [x] Config từ environment variables
-- [x] Structured logging
-- [x] Graceful shutdown
-- [x] Public URL ready (Railway / Render config)
+## Kien truc
 
----
-
-## Cấu Trúc
-
+```text
+Client
+  -> API key authentication
+  -> Rate limit
+  -> Daily cost guard
+  -> Research Agent
+       -> Gemini model
+       -> read-only tools
+       -> final answer with sources
+  -> JSON response
 ```
+
+Khi khong co `GEMINI_API_KEY`, API van chay bang mock response. Tool calling chi
+duoc bat khi co Gemini API key.
+
+## Tool da tich hop
+
+| Tool | Chuc nang | Can key |
+|---|---|---|
+| `web_search` | Tim web/tin tuc qua Tavily | `TAVILY_API_KEY` |
+| `read_url` | Doc noi dung URL qua Firecrawl | `FIRECRAWL_API_KEY` |
+| `search_papers` | Tim paper tren arXiv | Khong |
+| `market_price` | Tra gia stock/crypto | Khong |
+| `weather` | Tra thoi tiet hien tai | Khong |
+| `summarize_text` | Tom tat extractive tai local | Khong |
+| `format_digest` | Format ket qua thanh Markdown | Khong |
+
+Khong mang sang cac tool `send`, Telegram, social post, image analyzer va
+download PDF. Cac tool do co side effect, can them dich vu, hoac ghi file local
+khong phu hop voi container stateless.
+
+## Cau truc
+
+```text
 06-lab-complete/
 ├── app/
-│   ├── main.py         # Entry point — kết hợp tất cả
-│   ├── config.py       # 12-factor config
-│   ├── auth.py         # API Key + JWT
-│   ├── rate_limiter.py # Rate limiting
-│   └── cost_guard.py   # Budget protection
-├── Dockerfile          # Multi-stage, production-ready
-├── docker-compose.yml  # Full stack
-├── railway.toml        # Deploy Railway
-├── render.yaml         # Deploy Render
-├── .env.example        # Template
-├── .dockerignore
+│   ├── main.py          # FastAPI, auth, rate limit, cost guard
+│   ├── config.py        # Environment configuration
+│   ├── agent.py         # Model/tool loop
+│   └── tools.py         # Tool registry + implementations
+├── utils/
+│   └── mock_llm.py      # Offline fallback
+├── Dockerfile
+├── docker-compose.yml
+├── railway.toml
+├── render.yaml
+├── .env.example
 └── requirements.txt
 ```
 
----
-
-## Chạy Local
+## 1. Setup local
 
 ```bash
-# 1. Setup
-cp .env.example .env
-
-# 2. Chạy với Docker Compose
-docker compose up
-
-# 3. Test
-curl http://localhost/health
-
-# 4. Lấy API key từ .env, test endpoint
-API_KEY=$(grep AGENT_API_KEY .env | cut -d= -f2)
-curl -H "X-API-Key: $API_KEY" \
-     -X POST http://localhost/ask \
-     -H "Content-Type: application/json" \
-     -d '{"question": "What is deployment?"}'
+cd 06-lab-complete
+cp .env.example .env.local
 ```
 
----
-
-## Deploy Railway (< 5 phút)
+Tao secret local:
 
 ```bash
-# Cài Railway CLI
-npm i -g @railway/cli
-
-# Login và deploy
-railway login
-railway init
-railway variables set OPENAI_API_KEY=sk-...
-railway variables set AGENT_API_KEY=your-secret-key
-railway up
-
-# Nhận public URL!
-railway domain
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
----
+Mo `.env.local` va thay it nhat:
 
-## Deploy Render
+```dotenv
+AGENT_API_KEY=gia-tri-vua-tao
+JWT_SECRET=mot-gia-tri-random-khac
+```
 
-1. Push repo lên GitHub
-2. Render Dashboard → New → Blueprint
-3. Connect repo → Render đọc `render.yaml`
-4. Set secrets: `OPENAI_API_KEY`, `AGENT_API_KEY`
-5. Deploy → Nhận URL!
+### Chay mock, khong ton API
 
----
+De trong:
 
-## Kiểm Tra Production Readiness
+```dotenv
+GEMINI_API_KEY=
+```
+
+Sau do:
+
+```bash
+docker compose up --build
+```
+
+### Chay Research Agent that
+
+Them vao `.env.local`:
+
+```dotenv
+GEMINI_API_KEY=your-gemini-key
+LLM_MODEL=gemini-2.5-flash
+```
+
+Tool web la tuy chon:
+
+```dotenv
+TAVILY_API_KEY=your-tavily-key
+FIRECRAWL_API_KEY=your-firecrawl-key
+```
+
+Neu khong co Tavily/Firecrawl, agent van dung duoc arXiv, market, weather,
+summarizer va formatter.
+
+Khoi dong:
+
+```bash
+docker compose up --build
+```
+
+Neu khong dung Docker:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app \
+  --env-file .env.local \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --reload
+```
+
+## 2. Test local
+
+Chay unit test:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Test API:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+curl http://localhost:8000/tools
+```
+
+Goi agent:
+
+```bash
+API_KEY=$(grep '^AGENT_API_KEY=' .env.local | cut -d= -f2-)
+
+curl -X POST http://localhost:8000/ask \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Tim 3 paper gan day ve AI agent"}'
+```
+
+Thu tool khac:
+
+```bash
+curl -X POST http://localhost:8000/ask \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Thoi tiet hien tai o Bangkok nhu the nao?"}'
+```
+
+Response co truong `tools_used`:
+
+```json
+{
+  "question": "...",
+  "answer": "...",
+  "model": "...",
+  "tools_used": [
+    {
+      "name": "weather",
+      "arguments": {"location": "Bangkok"},
+      "ok": true,
+      "duration_ms": 421.7
+    }
+  ],
+  "timestamp": "..."
+}
+```
+
+## 3. Production readiness
 
 ```bash
 python check_production_ready.py
 ```
 
-Script này kiểm tra tất cả items trong checklist và báo cáo những gì còn thiếu.
+Truoc khi deploy, dam bao:
+
+- `.env.local` khong duoc commit.
+- `AGENT_API_KEY` va `JWT_SECRET` la secret manh.
+- `ENVIRONMENT=production`.
+- `ALLOWED_ORIGINS` khong dung `*` neu API duoc goi tu browser.
+- Dat spending limit trong Google AI Studio/Tavily/Firecrawl dashboard.
+- `MAX_TOOL_ROUNDS=3` la muc khoi dau hop ly.
+
+## 4. Deploy Railway - ban tu thuc hien
+
+Khong chay cac lenh deploy tu repository root. Service phai dung
+`06-lab-complete` lam root directory.
+
+### Cach CLI
+
+```bash
+cd 06-lab-complete
+railway login
+railway init
+```
+
+Dat bien moi truong. Thay cac placeholder truoc khi chay:
+
+```bash
+railway variable set ENVIRONMENT=production
+railway variable set AGENT_API_KEY=YOUR_STRONG_AGENT_KEY
+railway variable set JWT_SECRET=YOUR_STRONG_JWT_SECRET
+railway variable set GEMINI_API_KEY=YOUR_GEMINI_KEY
+railway variable set LLM_MODEL=gemini-2.5-flash
+railway variable set MAX_TOOL_ROUNDS=3
+railway variable set DAILY_BUDGET_USD=5.0
+railway variable set INPUT_COST_PER_MILLION_USD=0.54
+railway variable set OUTPUT_COST_PER_MILLION_USD=4.50
+railway variable set RATE_LIMIT_PER_MINUTE=20
+```
+
+Tuy chon:
+
+```bash
+railway variable set TAVILY_API_KEY=YOUR_TAVILY_KEY
+railway variable set FIRECRAWL_API_KEY=YOUR_FIRECRAWL_KEY
+railway variable set ALLOWED_ORIGINS=https://your-frontend.example
+```
+
+Deploy:
+
+```bash
+railway up
+railway domain
+```
+
+Kiem tra:
+
+```bash
+curl https://YOUR_RAILWAY_DOMAIN/health
+curl https://YOUR_RAILWAY_DOMAIN/tools
+```
+
+Neu dung Railway Dashboard + GitHub:
+
+1. Tao service tu GitHub repository.
+2. Dat **Root Directory** la `/06-lab-complete`.
+3. Them cac variables nhu danh sach tren.
+4. Generate domain.
+5. Push commit de Railway auto-deploy.
+
+## 5. Deploy Render - ban tu thuc hien
+
+`render.yaml` da co `rootDir: 06-lab-complete`.
+
+1. Push code len GitHub.
+2. Vao Render Dashboard.
+3. Chon **New** -> **Blueprint**.
+4. Ket noi repository.
+5. Chon Blueprint file `06-lab-complete/render.yaml`.
+6. Dien `GEMINI_API_KEY`.
+7. Dien `TAVILY_API_KEY` va `FIRECRAWL_API_KEY` neu dung.
+8. Render tu sinh `AGENT_API_KEY` va `JWT_SECRET`.
+9. Chon **Apply** va doi deploy hoan tat.
+
+Sau deploy, vao service **Environment** de xem/copy `AGENT_API_KEY`, sau do:
+
+```bash
+curl https://YOUR_RENDER_DOMAIN/health
+
+curl -X POST https://YOUR_RENDER_DOMAIN/ask \
+  -H "X-API-Key: YOUR_AGENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Tim tin AI agent trong tuan nay"}'
+```
+
+## 6. Theo doi sau deploy
+
+- Xem `/health` va log request.
+- Theo doi `429` de dieu chinh rate limit.
+- Theo doi `503` de biet daily budget da het.
+- Theo doi `502` de phat hien loi Gemini/provider.
+- Kiem tra `tools_used` de debug routing.
+- Khong log API key hay full tool content.
+
+## Gioi han cua bai lab
+
+- Rate limit va daily cost dang nam trong RAM cua tung worker.
+- Nhieu worker/instance khong chia se cung bo dem.
+- `REDIS_URL` da co san nhung rate limit chua dung Redis.
+- Cost guard chi uoc luong token, khong thay the billing data cua provider.
+- Cap nhat `INPUT_COST_PER_MILLION_USD` va `OUTPUT_COST_PER_MILLION_USD` khi
+  Google thay doi bang gia hoac khi ban doi model.
+- Public weather/market endpoints co the thay doi hoac rate limit.
+
+De production nghiem tuc, chuyen rate limit va budget counter sang Redis,
+them tracing, retry co backoff va metric tap trung.
