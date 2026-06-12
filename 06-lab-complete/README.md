@@ -219,32 +219,37 @@ railway init
 Dat bien moi truong. Thay cac placeholder truoc khi chay:
 
 ```bash
-railway variable set ENVIRONMENT=production
-railway variable set AGENT_API_KEY=YOUR_STRONG_AGENT_KEY
-railway variable set JWT_SECRET=YOUR_STRONG_JWT_SECRET
-railway variable set GEMINI_API_KEY=YOUR_GEMINI_KEY
-railway variable set LLM_MODEL=gemini-2.5-flash
-railway variable set MAX_TOOL_ROUNDS=3
-railway variable set DAILY_BUDGET_USD=5.0
-railway variable set INPUT_COST_PER_MILLION_USD=0.54
-railway variable set OUTPUT_COST_PER_MILLION_USD=4.50
-railway variable set RATE_LIMIT_PER_MINUTE=20
+railway variable set ENVIRONMENT=production --skip-deploys
+railway variable set AGENT_API_KEY=YOUR_STRONG_AGENT_KEY --skip-deploys
+railway variable set JWT_SECRET=YOUR_STRONG_JWT_SECRET --skip-deploys
+railway variable set GEMINI_API_KEY=YOUR_GEMINI_KEY --skip-deploys
+railway variable set LLM_MODEL=gemini-2.5-flash --skip-deploys
+railway variable set MAX_TOOL_ROUNDS=3 --skip-deploys
+railway variable set DAILY_BUDGET_USD=5.0 --skip-deploys
+railway variable set INPUT_COST_PER_MILLION_USD=0.54 --skip-deploys
+railway variable set OUTPUT_COST_PER_MILLION_USD=4.50 --skip-deploys
+railway variable set RATE_LIMIT_PER_MINUTE=20 --skip-deploys
 ```
 
 Tuy chon:
 
 ```bash
-railway variable set TAVILY_API_KEY=YOUR_TAVILY_KEY
-railway variable set FIRECRAWL_API_KEY=YOUR_FIRECRAWL_KEY
-railway variable set ALLOWED_ORIGINS=https://your-frontend.example
+railway variable set TAVILY_API_KEY=YOUR_TAVILY_KEY --skip-deploys
+railway variable set FIRECRAWL_API_KEY=YOUR_FIRECRAWL_KEY --skip-deploys
+railway variable set ALLOWED_ORIGINS=https://your-frontend.example --skip-deploys
 ```
 
 Deploy:
 
 ```bash
-railway up
+# Bat buoc voi monorepo: upload folder hien tai lam deployment root.
+railway up . --path-as-root
 railway domain
 ```
+
+Khong dung `railway up` khong co `--path-as-root` trong repository nay. Railway
+se upload repository root, khong thay `06-lab-complete/Dockerfile` va co the
+fallback sang Railpack.
 
 Kiem tra:
 
@@ -260,6 +265,37 @@ Neu dung Railway Dashboard + GitHub:
 3. Them cac variables nhu danh sach tren.
 4. Generate domain.
 5. Push commit de Railway auto-deploy.
+
+### Railway health check troubleshooting
+
+Kiem tra deployment:
+
+```bash
+railway status --json
+railway logs --lines 200
+```
+
+Trong build log dung, ban phai thay Railway dung `Dockerfile`, khong phai:
+
+```text
+using build driver railpack
+Railpack could not determine how to build the app
+```
+
+Neu log co noi dung tren, Root Directory/upload root van dang sai.
+
+Kiem tra public endpoint sau khi deployment co status `SUCCESS`:
+
+```bash
+railway domain
+curl -i https://YOUR_RAILWAY_DOMAIN/health
+```
+
+Ket qua can co:
+
+```text
+HTTP/2 200
+```
 
 ## 5. Deploy Render - ban tu thuc hien
 
