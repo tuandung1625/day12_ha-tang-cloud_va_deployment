@@ -251,6 +251,16 @@ Khong dung `railway up` khong co `--path-as-root` trong repository nay. Railway
 se upload repository root, khong thay `06-lab-complete/Dockerfile` va co the
 fallback sang Railpack.
 
+Khong dat **Custom Start Command** tren Railway Dashboard va khong them
+`startCommand` vao `railway.toml`. Deployment Dockerfile phai dung `CMD` sau:
+
+```dockerfile
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${WEB_CONCURRENCY:-2}"]
+```
+
+`sh -c` la phan thuc hien bien `${PORT}`. Neu Railway override bang mot exec
+command chua `$PORT`, Uvicorn co the nhan chuoi literal `$PORT` va crash.
+
 Kiem tra:
 
 ```bash
