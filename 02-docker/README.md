@@ -110,6 +110,115 @@ COPY --from=builder ...        # copy chỉ /site-packages
 
 ## Câu hỏi thảo luận
 
-1. Tại sao `COPY requirements.txt .` rồi `RUN pip install` TRƯỚC khi `COPY . .`?
-2. `.dockerignore` nên chứa những gì? Tại sao `venv/` và `.env` quan trọng?
-3. Nếu agent cần đọc file từ disk, làm sao mount volume vào container?
+# 1. Tại sao COPY requirements.txt rồi RUN pip install TRƯỚC khi COPY . . ?
+
+Docker build theo từng layer và có cache.
+
+Ví dụ:
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+Nếu chỉ sửa source code:
+
+app.py
+routes.py
+
+thì layer pip install vẫn được cache.
+
+Docker chỉ chạy lại:
+
+COPY . .
+
+=> build rất nhanh.
+
+Nếu làm ngược lại:
+
+COPY . .
+RUN pip install -r requirements.txt
+
+thì mỗi lần sửa 1 dòng code Docker phải cài lại toàn bộ dependencies.
+
+=> build rất chậm.
+
+# 2. .dockerignore nên chứa những gì? Tại sao venv/ và .env quan trọng?
+
+.dockerignore tương tự .gitignore.
+
+Nó ngăn Docker copy các file không cần thiết vào image.
+
+Ví dụ:
+
+__pycache__/
+*.pyc
+.git/
+venv/
+.env
+node_modules/
+dist/
+build/
+
+Lý do:
+
+- venv/
+  Chứa Python packages trên máy local.
+  Docker sẽ tự cài lại dependencies.
+  Copy venv vào image vừa nặng vừa dễ lỗi.
+
+- .env
+  Chứa secrets:
+
+  OPENAI_API_KEY=...
+  DATABASE_PASSWORD=...
+
+  Nếu copy vào image:
+  - image to hơn
+  - có nguy cơ lộ API key
+  - ai pull image cũng thấy được
+
+# 3. Nếu agent cần đọc file từ disk, làm sao mount volume vào container?
+
+Dùng volume mount.
+
+Ví dụ:
+
+docker run \
+  -v $(pwd)/data:/app/data \
+  agent-develop
+
+Ý nghĩa:
+
+Host:
+./data
+
+↓
+
+Container:
+/app/data
+
+Container đọc:
+
+/app/data/file.txt
+
+thì thực chất đang đọc:
+
+./data/file.txt
+
+trên máy thật.
+
+Ví dụ:
+
+Host:
+D:\Documents\data\report.pdf
+
+docker run \
+  -v D:\Documents\data:/app/data \
+  agent-develop
+
+Trong container:
+
+/app/data/report.pdf
+
+sẽ là file report.pdf trên máy Windows của bạn.
