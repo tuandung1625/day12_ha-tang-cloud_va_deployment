@@ -2,7 +2,7 @@
 # cloudbuild.yaml — Google Cloud Build CI/CD Pipeline
 #
 # Trigger: tự động chạy khi push lên main branch
-# Steps: test → build Docker image → push → deploy to Cloud Run
+# Steps: test -> build Docker image -> push -> deploy to Cloud Run
 #
 # Setup:
 #   gcloud builds submit --config cloudbuild.yaml .
@@ -20,7 +20,7 @@ steps:
       - |
         pip install -r requirements.txt pytest
         pytest tests/ -v --tb=short
-        echo "✅ Tests passed"
+        echo "Tests passed"
 
   # ──────────────────────────────────────
   # Step 2: Build Docker image
@@ -29,9 +29,9 @@ steps:
     id: build
     args:
       - build
-      - --tag=gcr.io/$PROJECT_ID/ai-agent:$COMMIT_SHA
-      - --tag=gcr.io/$PROJECT_ID/ai-agent:latest
-      - --cache-from=gcr.io/$PROJECT_ID/ai-agent:latest   # Layer cache
+      - --tag=$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:$BUILD_ID
+      - --tag=$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:latest
+      - --cache-from=$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:latest
       - .
     waitFor: [test]
 
@@ -43,30 +43,38 @@ steps:
     args:
       - push
       - --all-tags
-      - gcr.io/$PROJECT_ID/ai-agent
+      - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent
     waitFor: [build]
 
   # ──────────────────────────────────────
   # Step 4: Deploy to Cloud Run
   # ──────────────────────────────────────
-  - name: gcr.io/cloud-builders/gcloud
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     id: deploy
+    entrypoint: gcloud
     args:
       - run
       - deploy
       - ai-agent
-      - --image=gcr.io/$PROJECT_ID/ai-agent:$COMMIT_SHA
-      - --region=asia-southeast1
+      - --image=$_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:$BUILD_ID
+      - --region=$_REGION
       - --platform=managed
       - --allow-unauthenticated       # Public endpoint
-      - --min-instances=1             # Tránh cold start
+      - --min-instances=0             # Scale-to-zero để tiết kiệm chi phí demo
       - --max-instances=10            # Giới hạn scale
       - --memory=512Mi
       - --cpu=1
       - --timeout=60s
       - --set-env-vars=ENVIRONMENT=production
-      - --set-secrets=OPENAI_API_KEY=openai-key:latest  # từ Secret Manager
     waitFor: [push]
+
+images:
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:$BUILD_ID
+  - $_REGION-docker.pkg.dev/$PROJECT_ID/$_REPOSITORY/ai-agent:latest
+
+substitutions:
+  _REGION: asia-southeast1
+  _REPOSITORY: cloud-run-source-deploy
 
 # ──────────────────────────────────────
 # Build options

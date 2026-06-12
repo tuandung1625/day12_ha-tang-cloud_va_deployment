@@ -23,10 +23,36 @@ railway/
 ```
 
 ### Các bước deploy Railway:
-1. `railway login` (hoặc qua browser)
-2. `railway init`
-3. `railway up`
-4. Nhận URL dạng `https://your-app.up.railway.app`
+```bash
+cd 03-cloud-deployment/railway
+
+# Chạy local trước
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Terminal khác:
+
+```bash
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Deployment là gì?"}'
+```
+
+Deploy:
+
+```bash
+railway login
+railway init
+railway up
+railway domain
+```
+
+Nếu deploy bằng GitHub thay vì CLI, đặt **Root Directory** của Railway service
+là `/03-cloud-deployment/railway`.
 
 ---
 
@@ -37,7 +63,25 @@ railway/
 ```
 render/
 ├── render.yaml         # Khai báo service, env vars, disk
-└── app.py
+├── app.py
+└── requirements.txt
+```
+
+### Các bước deploy Render
+
+1. Push repository lên GitHub.
+2. Render Dashboard → **New** → **Blueprint**.
+3. Kết nối repository.
+4. Chọn Blueprint path là `03-cloud-deployment/render/render.yaml`.
+5. Review rồi chọn **Apply**.
+
+Test URL sau khi deploy:
+
+```bash
+curl https://YOUR-SERVICE.onrender.com/health
+curl -X POST https://YOUR-SERVICE.onrender.com/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Render là gì?"}'
 ```
 
 ---
@@ -48,15 +92,33 @@ Production-grade. Tự động build và deploy khi push code.
 
 ```
 production-cloud-run/
+├── app.py              # FastAPI app
+├── Dockerfile          # Container image
+├── requirements.txt
+├── tests/              # Test chạy trước khi build
 ├── cloudbuild.yaml     # CI/CD pipeline
 ├── service.yaml        # Cloud Run service definition
 └── README.md           # Hướng dẫn chi tiết
 ```
 
+Làm theo [production-cloud-run/README.md](production-cloud-run/README.md).
+
+> Gợi ý: học nhanh thì bắt đầu với Railway. Chọn Render nếu muốn deploy qua
+> GitHub Blueprint. Chọn Cloud Run khi cần IAM, autoscaling và CI/CD trên GCP.
+
 ---
 
 ## Câu hỏi thảo luận
 
-1. Tại sao serverless (Lambda) không phải lúc nào cũng tốt cho AI agent?
-2. "Cold start" là gì? Ảnh hưởng thế nào đến UX?
-3. Khi nào nên upgrade từ Railway lên Cloud Run?
+
+AI agent có thể cần:
+
+- Chạy lâu nhiều bước
+- Gọi LLM nhiều lần
+- Gọi tool/API bên ngoài
+- Giữ trạng thái hội thoại
+- Streaming response về frontend
+- Xử lý background task
+- Kết nối database/vector database
+
+Vì vậy, serverless có thể gặp vấn đề
